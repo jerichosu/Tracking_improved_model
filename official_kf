@@ -1,0 +1,200 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Sat Jul  2 12:09:12 2022
+
+@author: 1517suj
+"""
+
+from __future__ import absolute_import, division
+
+from copy import deepcopy
+# from math import log, exp, sqrt
+# import sys
+# import warnings 
+import numpy as np
+from numpy import dot, zeros, eye, isscalar, shape
+# import numpy.linalg as linalg
+# from filterpy.stats import logpdf
+from filterpy.common import pretty_str, reshape_z
+import matplotlib.pyplot as plt
+
+
+class KalmanFilter():
+    
+    def __init__(self):
+    
+        self.T = 1 # sampling time
+        
+        self.A = np.array([[1, self.T, 0, 0],
+                           [0, 0.87,   0, 0],
+                           [0, 0,      1, self.T],
+                           [0, 0,      0, 0.87]])
+        
+        self.F = np.array([[self.T**2 / 2, 0],
+                           [self.T,        0],
+                           [0,             self.T**2/2],
+                           [0,             self.T]])
+
+        self.C = np.array([[1, 0, 0, 0],
+                           [0, 0, 1, 0]])
+
+        self.G = np.diag([1, 1])
+
+
+        self.V = 1 # state noise covariance
+        self.W = 1 # measurement(sensor) noise covariance
+        
+
+        dim_x = len(self.A)
+        dim_y = len(self.C)
+        
+        self.x_hat = np.random.randn(dim_x,1)
+        # self.x_hat = np.zeros((dim_x, 1)) # initializa state estimate
+        
+        self.P = 10*np.eye(dim_x) # initialize covariance matrix
+        
+        
+        if dim_x < 1:
+            raise ValueError('dim_x must be 1 or greater')
+        if dim_y < 1:
+            raise ValueError('dim_z must be 1 or greater')
+
+        self.inv = np.linalg.inv
+
+
+    def update(self, y): #y: sensor signal
+
+        # if there is no measurement(sensor) signal
+        if y is None:
+            
+            #x(k+1) = Ax(k)
+            self.x_hat = dot(self.A, self.x_hat)  
+            
+            # P = APA' + FVF'
+            self.P = dot(self.A, dot(self.P, self.A.T)) + dot(self.F, dot(self.V, self.F.T)) 
+            
+            # return self.x_hat, self.P
+            return self.x_hat
+        
+        else:
+            #Kalman gain
+            # K  = APC' / (CPC' + GWG')
+            K = dot(dot(self.A, dot(self.P, self.C.T)), self.inv(dot(self.C, dot(self.P, self.C.T)) + dot(self.G, dot(self.W, self.G.T)))) 
+            
+            # state update
+            # x(k+1) = Ax(k) + K(y(k) - Cx(k))
+            self.x_hat = dot(self.A, self.x_hat) + dot(K, (y - dot(self.C, self.x_hat))) 
+            
+            #Riccati equation update
+            # P(k+1) = AP(k)A' - kAP(k)C' + FVF'
+            self.P = dot(self.A, dot(self.P, self.A.T)) - dot(K, dot(self.C, dot(self.P, self.A.T))) + dot(self.F, dot(self.V, self.F.T)) 
+            
+            # return self.x_hat, self.P
+            return self.x_hat
+        
+        
+        
+
+# sampling time
+T = 1
+
+A = np.array([[1, T, 0, 0],
+              [0, 1, 0, 0],
+              [0, 0, 1, T],
+              [0, 0, 0, 1]])
+
+F = np.array([[T**2/2, 0],
+              [T,     0],
+              [0,     T**2/2],
+              [0,     T]])
+
+C = np.array([[1, 0, 0, 0],
+              [0, 0, 1, 0]])
+
+G = np.diag([1, 1])
+
+V = np.diag([0.85, 0.3])
+
+W = np.diag([0.28, 0.65])
+
+
+x = []
+y = []
+
+# initial x value
+x_k = np.array([[0],
+                [5], 
+                [0], 
+                [7]])
+
+kmax = 200
+
+# simulate the system
+for k in range(kmax):
+    x_k = dot(A,x_k) + dot(dot(F,V), np.random.randn(2,1)) #x(k+1) = Ax(k) + Fv(k)
+    y_k = dot(C,x_k) + dot(dot(G,W), np.random.randn(2,1)) #y(k) = Cx(k) + Fw(k)
+    x.append(x_k)
+    y.append(y_k)
+
+#get states
+x1 = [x[0] for x in x]
+x2 = [x[2] for x in x]
+#get measurements
+y1 = [y[0] for y in y]
+y2 = [y[1] for y in y]
+
+# #plot
+# plot1 = plt.figure()
+# plt.plot(x1, x2)
+# plt.xlabel("x position")
+# plt.ylabel("y piosition")
+# plt.title("Traj. of Discrete-time NCV Model")
+# plt.grid(True)
+# plt.show()
+
+# plot2 = plt.figure()
+# plt.plot(y1, y2)
+# plt.xlabel("x position")
+# plt.ylabel("y piosition")
+# plt.title("Traj. of Discrete-time NCV Model")
+# plt.grid(True)
+# plt.show()
+
+
+# Intermittent measurements
+y_intermittent = list(y)
+y_intermittent[50:80] = [None]*30
+y_intermittent[140:170] = [None]*30
+
+
+
+# create a list to store estimated states
+xhat = []
+
+# initialize Kalman filter
+kf = KalmanFilter()
+
+for k in range(kmax):
+    x_hat = kf.update(y_intermittent[k])
+    xhat.append(x_hat)
+    
+    
+    
+#get state estimates
+xhat1 = [xhat[0] for xhat in xhat]
+xhat2 = [xhat[2] for xhat in xhat]
+
+
+#plot
+plot3 = plt.figure()
+plt.plot(x1, x2, linewidth=3, label = 'raw traj')
+plt.plot(xhat1, xhat2, linewidth=1.5, label = 'estimated traj')
+
+plt.legend()
+plt.xlabel("xhat1")
+plt.ylabel("xhat2")
+plt.title("Traj. of Discrete-time NCV Model")
+plt.grid(True)
+plt.show()
+
